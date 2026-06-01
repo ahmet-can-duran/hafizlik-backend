@@ -1,6 +1,5 @@
 from flask import Flask, request, jsonify, send_file
-import edge_tts
-import asyncio
+from gtts import gTTS
 import os
 import re
 import requests
@@ -8,8 +7,9 @@ from difflib import SequenceMatcher
 
 app = Flask(__name__)
 
-# KOPYALADIĞIN GROQ API ANAHTARINI AŞAĞIDAKİ TIRNAKLARIN İÇİNE YAPIŞTIR
+# GROQ ŞİFREN BURADA KASADAN ÇEKİLMEYE DEVAM EDİYOR (DOKUNMA)
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+
 WHISPER_HATALARI = {
     "ألام": "ألم", "الام": "ألم", "إلام": "ألم", "لام": "ألم", 
     "لايلاف": "لإيلاف", "ليلاف": "لإيلاف", "ايلافهم": "إيلافهم", "وامنهم": "وآمنهم",
@@ -41,10 +41,6 @@ def besmele_filtresi(okunan_kelimeler, sure_id):
             return okunan_kelimeler[4:] 
     return okunan_kelimeler
 
-async def erkek_sesi_olustur(metin, dosya_adi):
-    iletisim = edge_tts.Communicate(metin, "ar-SA-HamedNeural")
-    await iletisim.save(dosya_adi)
-
 @app.route('/')
 def index():
     return "Hafızlık Asistanı Canlı Bulut API Sunucusu Aktif!"
@@ -65,7 +61,6 @@ def process_audio():
         beklenen_ayet = response['data']['ayahs'][int(ayet_no)-1]['text']
         beklenen_kelimeler = metni_temizle(beklenen_ayet).split()
         
-        # --- BULUT YAPAY ZEKASI (GROQ WHISPER LARGE) ---
         with open(audio_path, "rb") as f:
             headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
             files = {
@@ -84,7 +79,6 @@ def process_audio():
         okunan_kelimeler = metni_temizle(ham_okunan).split()
         okunan_kelimeler = besmele_filtresi(okunan_kelimeler, sure_id)
         
-        # KATI VE KUSURSUZ HAFIZLIK DENETİMİ (%85)
         KELIME_HASSASIYETI = 0.85 
         hata_var = False
         mesaj = ""
@@ -112,7 +106,9 @@ def process_audio():
         if not hata_var:
             return jsonify({"durum": "basarili", "okunan": ham_okunan})
         else:
-            asyncio.run(erkek_sesi_olustur(hatali_kelime, "duzeltme.mp3"))
+            # MICROSOFT YERİNE GOOGLE TTS İLE HATALI KELİMEYİ SESLENDİR (Asla çökmez)
+            tts = gTTS(text=hatali_kelime, lang='ar')
+            tts.save("duzeltme.mp3")
             return jsonify({"durum": "hatali", "mesaj": mesaj, "okunan": ham_okunan, "beklenen": hatali_kelime})
             
     except Exception as e:

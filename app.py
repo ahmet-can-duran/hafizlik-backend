@@ -7,7 +7,6 @@ from difflib import SequenceMatcher
 
 app = Flask(__name__)
 
-# GROQ ŞİFREN BURADA KASADAN ÇEKİLMEYE DEVAM EDİYOR (DOKUNMA)
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 
 WHISPER_HATALARI = {
@@ -32,7 +31,7 @@ def girtlak_toleransi(kelime):
     return kelime
 
 def besmele_filtresi(okunan_kelimeler, sure_id):
-    if sure_id == "1":
+    if sure_id == "1": # Fatiha'da 1. ayet besmeledir, dokunma
         return okunan_kelimeler
     besmele_kaliplari = [["بسم", "الله", "الرحمن", "الرحيم"], ["بسم", "الله", "الرحمان", "الرحيم"]]
     if len(okunan_kelimeler) >= 4:
@@ -56,10 +55,14 @@ def process_audio():
         sure_adi = request.form['sure_adi']
         ayet_no = request.form['ayet_no']
         
+        # API'den beklenen ayeti çek
         api_url = f"http://api.alquran.cloud/v1/surah/{sure_id}/quran-simple"
         response = requests.get(api_url).json()
         beklenen_ayet = response['data']['ayahs'][int(ayet_no)-1]['text']
+        
+        # İŞTE SİHİRLİ DOKUNUŞ BURADA: API'den gelen metinden de Besmeleyi çıkar (Fatiha hariç)
         beklenen_kelimeler = metni_temizle(beklenen_ayet).split()
+        beklenen_kelimeler = besmele_filtresi(beklenen_kelimeler, sure_id)
         
         with open(audio_path, "rb") as f:
             headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
@@ -76,6 +79,8 @@ def process_audio():
             ).json()
             
         ham_okunan = groq_response.get('text', '')
+        
+        # Sesten gelen Besmeleyi zaten siliyorduk
         okunan_kelimeler = metni_temizle(ham_okunan).split()
         okunan_kelimeler = besmele_filtresi(okunan_kelimeler, sure_id)
         
@@ -106,7 +111,6 @@ def process_audio():
         if not hata_var:
             return jsonify({"durum": "basarili", "okunan": ham_okunan})
         else:
-            # MICROSOFT YERİNE GOOGLE TTS İLE HATALI KELİMEYİ SESLENDİR (Asla çökmez)
             tts = gTTS(text=hatali_kelime, lang='ar')
             tts.save("duzeltme.mp3")
             return jsonify({"durum": "hatali", "mesaj": mesaj, "okunan": ham_okunan, "beklenen": hatali_kelime})
